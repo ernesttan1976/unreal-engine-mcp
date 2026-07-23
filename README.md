@@ -130,6 +130,10 @@ Verify the server shows as connected in your IDE and start prompting.
 
 This repo includes a standalone local MCP server (`Python/`) and a C++ Unreal plugin (`UnrealMCP/`). This is a simpler, community-maintained toolset for basic Unreal Engine control — scene building, actor management, physics, and foundational Blueprint operations.
 
+### Learning Mode (Guidance-First)
+
+If you want the MCP to focus on inspection/debugging and avoid direct automation, create `Python/.env` (or repo-root `.env`) with `UNREAL_MCP_LEARNING_MODE=true`. In this mode, read tools still work, write tools are blocked, and `compile_blueprint` remains allowed.
+
 **If you want the full 50+ tool experience, use the [Hosted Flop MCP](#hosted-flop-mcp-recommended) instead.**
 
 | **Category** | **Tools** | **Description** |

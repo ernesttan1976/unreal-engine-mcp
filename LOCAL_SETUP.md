@@ -43,6 +43,16 @@ cd Python
 uv run unreal_mcp_server_advanced.py
 ```
 
+### Learning Mode (Optional)
+
+To run in guidance-first mode (inspection/debug only), create `Python/.env` (or repo-root `.env`) with:
+
+```env
+UNREAL_MCP_LEARNING_MODE=true
+```
+
+In Learning Mode, tools that would modify the level/project are blocked (compile is allowed).
+
 ## 3. Configure Your AI Client
 
 Add this to your MCP configuration:

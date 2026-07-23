@@ -1,10 +1,13 @@
 {
   "mcpServers": {
-    "flopperam-unreal": {
-      "url": "https://agent.flopperam.com/mcp",
-      "headers": {
-        "Authorization": "Bearer ${FLOPPERAM_API_KEY}"
-      }
+    "unrealMCP": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "Python",
+        "run",
+        "unreal_mcp_server_advanced.py"
+      ]
     }
   }
 }

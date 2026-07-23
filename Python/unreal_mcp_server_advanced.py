@@ -6,12 +6,14 @@ Contains only the advanced tools from the expanded MCP tool system to keep tool 
 """
 
 import logging
+import os
 import socket
 import json
 import math
 import struct
 import time
 import threading
+from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, Optional, List
 from mcp.server.fastmcp import FastMCP
@@ -65,6 +67,81 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("UnrealMCP_Advanced")
+
+
+# ============================================================================
+# Learning Mode (Local-only guidance mode)
+# ============================================================================
+
+def _load_dotenv_if_present() -> None:
+    """Best-effort .env loader (no external dependencies).
+
+    Supported format:
+    - KEY=VALUE
+    - Quotes around VALUE are stripped
+    - Lines starting with # are ignored
+    - Existing environment variables are NOT overridden
+    """
+
+    def _load_file(p: Path) -> None:
+        try:
+            if not p.exists() or not p.is_file():
+                return
+            for raw in p.read_text(encoding="utf-8").splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                if not k:
+                    continue
+                if k in os.environ:
+                    continue
+                v = v.strip()
+                if len(v) >= 2 and ((v[0] == '"' and v[-1] == '"') or (v[0] == "'" and v[-1] == "'")):
+                    v = v[1:-1]
+                os.environ[k] = v
+        except Exception:
+            # Never block server startup on .env parsing.
+            return
+
+    here = Path(__file__).resolve().parent
+    repo_root = here.parent
+    _load_file(repo_root / ".env")
+    _load_file(here / ".env")
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    v = str(v).strip().lower()
+    if v in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if v in {"0", "false", "f", "no", "n", "off"}:
+        return False
+    return default
+
+
+_load_dotenv_if_present()
+LEARNING_MODE = _env_bool("UNREAL_MCP_LEARNING_MODE", default=False)
+
+
+def _blocked_in_learning(tool_name: str, action: str) -> Dict[str, Any]:
+    return {
+        "success": False,
+        "blocked": True,
+        "mode": "learning",
+        "tool": tool_name,
+        "message": (
+            f"Learning mode is enabled (UNREAL_MCP_LEARNING_MODE=true). "
+            f"This tool is blocked because it would {action}. "
+            "Use inspection tools to understand the current state, then apply changes manually in Unreal Editor. "
+            "To enable full automation, set UNREAL_MCP_LEARNING_MODE=false and restart the MCP server."
+        ),
+    }
 
 # Configuration
 UNREAL_HOST = "127.0.0.1"
@@ -480,6 +557,8 @@ def find_actors_by_name(pattern: str) -> Dict[str, Any]:
 @mcp.tool()
 def delete_actor(name: str) -> Dict[str, Any]:
     """Delete an actor by name."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("delete_actor", "delete an actor from the level")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -500,6 +579,8 @@ def set_actor_transform(
     scale: List[float] = None
 ) -> Dict[str, Any]:
     """Set the transform of an actor."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("set_actor_transform", "modify an actor transform in the level")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -523,6 +604,8 @@ def set_actor_transform(
 @mcp.tool()
 def create_blueprint(name: str, parent_class: str) -> Dict[str, Any]:
     """Create a new Blueprint class."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("create_blueprint", "create a Blueprint asset")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -549,6 +632,8 @@ def add_component_to_blueprint(
     component_properties: Dict[str, Any] = {}
 ) -> Dict[str, Any]:
     """Add a component to a Blueprint."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("add_component_to_blueprint", "modify a Blueprint by adding a component")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -576,6 +661,8 @@ def set_static_mesh_properties(
     static_mesh: str = "/Engine/BasicShapes/Cube.Cube"
 ) -> Dict[str, Any]:
     """Set static mesh properties on a StaticMeshComponent."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("set_static_mesh_properties", "modify a Blueprint component's mesh")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -603,6 +690,8 @@ def set_physics_properties(
     angular_damping: float = 0
 ) -> Dict[str, Any]:
     """Set physics properties on a component."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("set_physics_properties", "modify physics settings on a Blueprint component")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -838,6 +927,8 @@ def create_pyramid(
     mesh: str = "/Engine/BasicShapes/Cube.Cube"
 ) -> Dict[str, Any]:
     """Spawn a pyramid made of cube actors."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("create_pyramid", "spawn actors into the level")
     try:
         unreal = get_unreal_connection()
         if not unreal:
@@ -880,6 +971,8 @@ def create_wall(
     mesh: str = "/Engine/BasicShapes/Cube.Cube"
 ) -> Dict[str, Any]:
     """Create a simple wall from cubes."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("create_wall", "spawn actors into the level")
     try:
         unreal = get_unreal_connection()
         if not unreal:
@@ -919,6 +1012,8 @@ def create_tower(
     tower_style: str = "cylindrical"  # "cylindrical", "square", "tapered"
 ) -> Dict[str, Any]:
     """Create a realistic tower with various architectural styles."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("create_tower", "spawn actors into the level")
     try:
         unreal = get_unreal_connection()
         if not unreal:
@@ -1057,6 +1152,8 @@ def create_staircase(
     mesh: str = "/Engine/BasicShapes/Cube.Cube"
 ) -> Dict[str, Any]:
     """Create a staircase from cubes."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("create_staircase", "spawn actors into the level")
     try:
         unreal = get_unreal_connection()
         if not unreal:
@@ -1093,6 +1190,8 @@ def construct_house(
     house_style: str = "modern"  # "modern", "cottage"
 ) -> Dict[str, Any]:
     """Construct a realistic house with architectural details and multiple rooms."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("construct_house", "spawn many actors into the level")
     try:
         unreal = get_unreal_connection()
         if not unreal:
@@ -1117,6 +1216,8 @@ def construct_mansion(
     Construct a magnificent mansion with multiple wings, grand rooms, gardens,
     fountains, and luxury features perfect for dramatic TikTok reveals.
     """
+    if LEARNING_MODE:
+        return _blocked_in_learning("construct_mansion", "spawn many actors into the level")
     try:
         unreal = get_unreal_connection()
         if not unreal:
@@ -1170,6 +1271,8 @@ def create_arch(
     mesh: str = "/Engine/BasicShapes/Cube.Cube"
 ) -> Dict[str, Any]:
     """Create a simple arch using cubes in a semicircle."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("create_arch", "spawn actors into the level")
     try:
         unreal = get_unreal_connection()
         if not unreal:
@@ -1220,6 +1323,8 @@ def spawn_physics_blueprint_actor (
         color: Optional color as [R, G, B] or [R, G, B, A] where values are 0.0-1.0.
                If [R, G, B] is provided, alpha will be set to 1.0 automatically.
     """
+    if LEARNING_MODE:
+        return _blocked_in_learning("spawn_physics_blueprint_actor", "create/modify Blueprints and spawn an actor")
     try:
         bp_name = f"{name}_BP"
         create_blueprint(bp_name, "Actor")
@@ -1267,6 +1372,8 @@ def create_maze(
     location: List[float] = [0.0, 0.0, 0.0]
 ) -> Dict[str, Any]:
     """Create a proper solvable maze with entrance, exit, and guaranteed path using recursive backtracking algorithm."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("create_maze", "spawn many actors into the level")
     try:
         unreal = get_unreal_connection()
         if not unreal:
@@ -1395,6 +1502,8 @@ def apply_material_to_actor(
     material_slot: int = 0
 ) -> Dict[str, Any]:
     """Apply a specific material to an actor in the level."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("apply_material_to_actor", "modify materials on an actor")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -1419,6 +1528,8 @@ def apply_material_to_blueprint(
     material_slot: int = 0
 ) -> Dict[str, Any]:
     """Apply a specific material to a component in a Blueprint."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("apply_material_to_blueprint", "modify materials on a Blueprint component")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -1463,6 +1574,8 @@ def set_mesh_material_color(
     material_slot: int = 0
 ) -> Dict[str, Any]:
     """Set material color on a mesh component using the proven color system."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("set_mesh_material_color", "modify material parameters on a Blueprint component")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -1527,6 +1640,8 @@ def create_town(
     architectural_style: str = "mixed"  # "modern", "cottage", "mansion", "mixed", "downtown", "futuristic"
 ) -> Dict[str, Any]:
     """Create a full dynamic town with buildings, streets, infrastructure, and vehicles."""
+    if LEARNING_MODE:
+        return _blocked_in_learning("create_town", "spawn many actors into the level")
     try:
         import random
         random.seed()  # Use different seed each time for variety
@@ -1694,6 +1809,8 @@ def create_castle_fortress(
     and surrounding village. Perfect for dramatic TikTok reveals showing
     the scale and detail of a complete medieval fortress.
     """
+    if LEARNING_MODE:
+        return _blocked_in_learning("create_castle_fortress", "spawn many actors into the level")
     try:
         unreal = get_unreal_connection()
         if not unreal:
@@ -1791,6 +1908,8 @@ def create_suspension_bridge(
     Returns:
         Dictionary with success status, spawned actors, and performance metrics
     """
+    if LEARNING_MODE and not dry_run:
+        return _blocked_in_learning("create_suspension_bridge", "spawn many actors into the level")
     try:
         import time
         start_time = time.perf_counter()
@@ -1914,6 +2033,8 @@ def create_aqueduct(
     Returns:
         Dictionary with success status, spawned actors, and performance metrics
     """
+    if LEARNING_MODE and not dry_run:
+        return _blocked_in_learning("create_aqueduct", "spawn many actors into the level")
     try:
         import time
         start_time = time.perf_counter()
@@ -2094,6 +2215,8 @@ def add_node(
         - Dynamic pin management: Switch/SwitchEnum/ExecutionSequence/MakeArray support pin operations
         - Timeline is the ONLY node requiring manual implementation (curves must be added in editor)
     """
+    if LEARNING_MODE:
+        return _blocked_in_learning("add_node", "modify a Blueprint graph")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -2155,6 +2278,8 @@ def connect_nodes(
     Returns:
         Dictionary with success status and connection details
     """
+    if LEARNING_MODE:
+        return _blocked_in_learning("connect_nodes", "modify a Blueprint graph")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -2202,6 +2327,8 @@ def create_variable(
     Returns:
         Dictionary with success status and variable details
     """
+    if LEARNING_MODE:
+        return _blocked_in_learning("create_variable", "modify Blueprint variables")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -2356,6 +2483,8 @@ def set_blueprint_variable_properties(
     Returns:
         Dictionary with success status and updated properties
     """
+    if LEARNING_MODE:
+        return _blocked_in_learning("set_blueprint_variable_properties", "modify Blueprint variables")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -2415,6 +2544,8 @@ def add_event_node(
     Returns:
         Dictionary with success status, node_id, event_name, and position
     """
+    if LEARNING_MODE:
+        return _blocked_in_learning("add_event_node", "modify a Blueprint graph")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -2454,6 +2585,8 @@ def delete_node(
     Returns:
         Dictionary with success status and deleted_node_id
     """
+    if LEARNING_MODE:
+        return _blocked_in_learning("delete_node", "modify a Blueprint graph")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -2565,6 +2698,8 @@ def set_node_property(
                 target_class="APawn"
             )
     """
+    if LEARNING_MODE:
+        return _blocked_in_learning("set_node_property", "modify a Blueprint graph")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -2623,6 +2758,8 @@ def create_function(
     Returns:
         Dictionary with function_name, graph_id or error
     """
+    if LEARNING_MODE:
+        return _blocked_in_learning("create_function", "modify Blueprint functions")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -2661,6 +2798,8 @@ def add_function_input(
     Returns:
         Dictionary with param_name, param_type, and direction or error
     """
+    if LEARNING_MODE:
+        return _blocked_in_learning("add_function_input", "modify Blueprint functions")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -2701,6 +2840,8 @@ def add_function_output(
     Returns:
         Dictionary with param_name, param_type, and direction or error
     """
+    if LEARNING_MODE:
+        return _blocked_in_learning("add_function_output", "modify Blueprint functions")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -2735,6 +2876,8 @@ def delete_function(
     Returns:
         Dictionary with deleted_function_name or error
     """
+    if LEARNING_MODE:
+        return _blocked_in_learning("delete_function", "modify Blueprint functions")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}
@@ -2768,6 +2911,8 @@ def rename_function(
     Returns:
         Dictionary with new_function_name or error
     """
+    if LEARNING_MODE:
+        return _blocked_in_learning("rename_function", "modify Blueprint functions")
     unreal = get_unreal_connection()
     if not unreal:
         return {"success": False, "message": "Failed to connect to Unreal Engine"}

@@ -83,6 +83,16 @@ Run the streamlined server instead of the full one:
 python unreal_mcp_server_advanced.py
 ```
 
+## Learning Mode (Guidance-First)
+
+Create `Python/.env` (or repo-root `.env`) with:
+
+```env
+UNREAL_MCP_LEARNING_MODE=true
+```
+
+When enabled, tools that would modify the project or level are blocked and return guidance. Read/inspect tools still work. `compile_blueprint` is allowed.
+
 ## Benefits
 
 - **Simpler**: Only 21 tools vs 44 tools
