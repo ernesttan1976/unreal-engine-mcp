@@ -80,7 +80,7 @@ The following tool categories were removed to reduce complexity:
 Run the streamlined server instead of the full one:
 
 ```bash
-python unreal_mcp_server_advanced.py
+uv run unreal_mcp_server_advanced.py
 ```
 
 ## Learning Mode (Guidance-First)

@@ -13,6 +13,7 @@ import math
 import struct
 import time
 import threading
+import sys
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, Optional, List
@@ -67,6 +68,86 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("UnrealMCP_Advanced")
+
+
+def _patch_fastmcp_stdio_ignore_blank_lines() -> None:
+    """Patch FastMCP stdio transport to ignore blank lines.
+
+    Some MCP clients can emit spacing/keepalive newlines on stdio. The upstream
+    stdio transport treats those as invalid JSON and surfaces them as server
+    errors. Skipping blank lines keeps the session stable.
+    """
+
+    try:
+        import anyio
+        import anyio.lowlevel
+        from contextlib import asynccontextmanager as _acm
+        from io import TextIOWrapper
+
+        import mcp.types as types
+        from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
+        from mcp.shared.message import SessionMessage
+
+        import mcp.server.fastmcp.server as fastmcp_server
+    except Exception as exc:
+        logger.warning(f"Failed to patch FastMCP stdio transport: {exc}")
+        return
+
+    if getattr(fastmcp_server, "_UNREAL_MCP_STDIO_PATCHED", False):
+        return
+
+    @_acm
+    async def _stdio_server_filtered(
+        stdin: anyio.AsyncFile[str] | None = None,
+        stdout: anyio.AsyncFile[str] | None = None,
+    ):
+        if not stdin:
+            stdin = anyio.wrap_file(TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace"))
+        if not stdout:
+            stdout = anyio.wrap_file(TextIOWrapper(sys.stdout.buffer, encoding="utf-8"))
+
+        read_stream: MemoryObjectReceiveStream[SessionMessage | Exception]
+        read_stream_writer: MemoryObjectSendStream[SessionMessage | Exception]
+
+        write_stream: MemoryObjectSendStream[SessionMessage]
+        write_stream_reader: MemoryObjectReceiveStream[SessionMessage]
+
+        read_stream_writer, read_stream = anyio.create_memory_object_stream(0)
+        write_stream, write_stream_reader = anyio.create_memory_object_stream(0)
+
+        async def stdin_reader():
+            try:
+                async with read_stream_writer:
+                    async for line in stdin:
+                        if not line.strip():
+                            continue
+                        try:
+                            message = types.JSONRPCMessage.model_validate_json(line)
+                        except Exception as exc:
+                            await read_stream_writer.send(exc)
+                            continue
+
+                        await read_stream_writer.send(SessionMessage(message))
+            except anyio.ClosedResourceError:  # pragma: no cover
+                await anyio.lowlevel.checkpoint()
+
+        async def stdout_writer():
+            try:
+                async with write_stream_reader:
+                    async for session_message in write_stream_reader:
+                        json_str = session_message.message.model_dump_json(by_alias=True, exclude_none=True)
+                        await stdout.write(json_str + "\n")
+                        await stdout.flush()
+            except anyio.ClosedResourceError:  # pragma: no cover
+                await anyio.lowlevel.checkpoint()
+
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(stdin_reader)
+            tg.start_soon(stdout_writer)
+            yield read_stream, write_stream
+
+    fastmcp_server.stdio_server = _stdio_server_filtered
+    fastmcp_server._UNREAL_MCP_STDIO_PATCHED = True
 
 
 # ============================================================================
@@ -2938,4 +3019,5 @@ def rename_function(
 # Run the server
 if __name__ == "__main__":
     logger.info("Starting Advanced MCP server with stdio transport")
+    _patch_fastmcp_stdio_ignore_blank_lines()
     mcp.run(transport='stdio') 

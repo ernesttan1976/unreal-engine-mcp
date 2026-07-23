@@ -1,12 +1,10 @@
 {
   "mcpServers": {
     "unrealMCP": {
-      "command": "uv",
+      "command": ".\\.venv\\Scripts\\python.exe",
       "args": [
-        "--directory",
-        "Python",
-        "run",
-        "unreal_mcp_server_advanced.py"
+        "-u",
+        ".\\Python\\unreal_mcp_server_advanced.py"
       ]
     }
   }
