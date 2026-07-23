@@ -43,6 +43,14 @@ cd Python
 uv run unreal_mcp_server_advanced.py
 ```
 
+### Docker (Auto-Restart)
+
+This runs the MCP server over **streamable HTTP** on `http://localhost:8000/mcp`.
+
+```bash
+docker compose up -d --build
+```
+
 ### Learning Mode (Optional)
 
 To run in guidance-first mode (inspection/debug only), create `Python/.env` (or repo-root `.env`) with:

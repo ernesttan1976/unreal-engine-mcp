@@ -599,9 +599,23 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
         logger.info("Unreal MCP Advanced server shut down")
 
 # Initialize server
+#
+# Note: FastMCP settings are passed explicitly here, which means FastMCP's
+# internal BaseSettings env loading won't override them. We intentionally
+# plumb through a few FASTMCP_* env vars so Docker/Compose can configure the
+# HTTP transports without changing code.
+_fastmcp_host = os.environ.get("FASTMCP_HOST") or "127.0.0.1"
+_fastmcp_port_raw = os.environ.get("FASTMCP_PORT")
+try:
+    _fastmcp_port = int(_fastmcp_port_raw) if _fastmcp_port_raw else 8000
+except Exception:
+    _fastmcp_port = 8000
+
 mcp = FastMCP(
     "UnrealMCP_Advanced",
-    lifespan=server_lifespan
+    lifespan=server_lifespan,
+    host=_fastmcp_host,
+    port=_fastmcp_port,
 )
 
 # Essential Actor Management Tools
@@ -3018,6 +3032,18 @@ def rename_function(
 
 # Run the server
 if __name__ == "__main__":
-    logger.info("Starting Advanced MCP server with stdio transport")
-    _patch_fastmcp_stdio_ignore_blank_lines()
-    mcp.run(transport='stdio') 
+    transport_raw = (os.environ.get("UNREAL_MCP_TRANSPORT") or "stdio").strip().lower()
+    if transport_raw in {"streamable-http", "streamable_http", "streamablehttp"}:
+        transport = "streamable-http"
+    elif transport_raw in {"sse"}:
+        transport = "sse"
+    else:
+        transport = "stdio"
+
+    logger.info(f"Starting Advanced MCP server with transport={transport}")
+    if transport == "stdio":
+        _patch_fastmcp_stdio_ignore_blank_lines()
+
+    # Optional override for HTTP mount path (only used by HTTP transports).
+    mount_path = os.environ.get("FASTMCP_MOUNT_PATH")
+    mcp.run(transport=transport, mount_path=mount_path)

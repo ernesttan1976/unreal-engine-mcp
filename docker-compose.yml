@@ -1,0 +1,15 @@
+services:
+  unreal-mcp:
+    build:
+      context: ./Python
+      dockerfile: Dockerfile
+    image: unreal-engine-mcp:local
+    restart: unless-stopped
+    environment:
+      UNREAL_MCP_TRANSPORT: streamable-http
+      FASTMCP_HOST: 0.0.0.0
+      FASTMCP_PORT: 8000
+      # Optional:
+      # UNREAL_MCP_LEARNING_MODE: "true"
+    ports:
+      - "8000:8000"

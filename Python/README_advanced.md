@@ -83,6 +83,14 @@ Run the streamlined server instead of the full one:
 uv run unreal_mcp_server_advanced.py
 ```
 
+### Docker (Auto-Restart)
+
+Runs over **streamable HTTP** on `http://localhost:8000/mcp`:
+
+```bash
+docker compose up -d --build
+```
+
 ## Learning Mode (Guidance-First)
 
 Create `Python/.env` (or repo-root `.env`) with:

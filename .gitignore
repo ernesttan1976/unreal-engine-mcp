@@ -96,6 +96,9 @@ MCPGameProject/Config/DefaultEditorPerProjectUserSettings.ini
 # Cursor
 .cursor/mcp.json
 
+# Docker local data
+.docker-data/
+
 # Visual Studio
 .vs
 .vscode
